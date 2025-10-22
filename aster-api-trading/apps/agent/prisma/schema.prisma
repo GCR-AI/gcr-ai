@@ -1,0 +1,190 @@
+// Prisma schema for GCR AI
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// Trading decisions made by the AI
+model Decision {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  timestamp   DateTime @default(now())
+
+  // Market context
+  symbol      String
+  price       Float
+  marketData  Json     // Full market snapshot
+
+  // LLM interaction
+  prompt      String
+  llmResponse String
+  reasoning   String
+
+  // Decision output
+  action      String   // BUY, SELL, HOLD, CLOSE
+  side        String?  // BUY or SELL
+  quantity    String?
+  confidence  Float    // 0-1 scale
+  vibe        String   // bullish, bearish, neutral, chaos
+  timeframe   String   // scalp, short, medium, long
+
+  // Risk management
+  stopLoss    Float?
+  takeProfit  Float?
+  riskLevel   String   // low, medium, high
+
+  // Execution tracking
+  executed    Boolean  @default(false)
+  orderId     String?
+
+  // Outcome
+  profitable  Boolean?
+  pnl         Float?
+
+  // Relations
+  trades      Trade[]
+
+  @@index([timestamp])
+  @@index([symbol])
+  @@index([action])
+}
+
+// Actual trades executed
+model Trade {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  timestamp      DateTime @default(now())
+
+  // Order details
+  orderId        String
+  symbol         String
+  side           String   // BUY or SELL
+  type           String   // LIMIT, MARKET, etc.
+  positionSide   String   // BOTH, LONG, SHORT
+
+  // Execution
+  price          String
+  quantity       String
+  quoteQty       String
+  commission     String
+  commissionAsset String
+
+  // Status
+  status         String   // NEW, FILLED, CANCELED, etc.
+
+  // P&L
+  realizedPnl    Float?
+  unrealizedPnl  Float?
+
+  // Relations
+  decision       Decision? @relation(fields: [decisionId], references: [id])
+  decisionId     String?   @db.ObjectId
+  position       Position? @relation(fields: [positionId], references: [id])
+  positionId     String?   @db.ObjectId
+
+  @@index([timestamp])
+  @@index([symbol])
+  @@index([orderId])
+}
+
+// Current positions
+model Position {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  updatedAt       DateTime @updatedAt
+
+  // Position details
+  symbol          String
+  positionSide    String
+  positionAmt     String
+  entryPrice      String
+  markPrice       String
+  liquidationPrice String?
+
+  // P&L
+  unrealizedProfit String
+  realizedProfit   String?
+
+  // Margin
+  leverage        String
+  marginType      String
+  isolatedMargin  String?
+
+  // Status
+  isOpen          Boolean  @default(true)
+
+  // Relations
+  trades          Trade[]
+
+  @@index([symbol])
+  @@index([isOpen])
+}
+
+// Market snapshots for analysis
+model MarketSnapshot {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  timestamp        DateTime @default(now())
+
+  symbol           String
+  price            String
+  priceChangePercent String
+  volume           String
+  quoteVolume      String
+  highPrice        String
+  lowPrice         String
+
+  // Technical indicators
+  rsi              Float?
+  sma20            Float?
+  sma50            Float?
+  ema20            Float?
+  volatility       Float?
+
+  @@index([timestamp])
+  @@index([symbol])
+}
+
+// Agent state tracking
+model AgentState {
+  id              String   @id @map("_id")
+  updatedAt       DateTime @updatedAt
+
+  // Status
+  isRunning       Boolean  @default(false)
+  isPaused        Boolean  @default(false)
+  lastHeartbeat   DateTime @default(now())
+
+  // Performance
+  totalTrades     Int      @default(0)
+  winningTrades   Int      @default(0)
+  losingTrades    Int      @default(0)
+  totalPnl        Float    @default(0)
+
+  // Risk metrics
+  currentDrawdown Float    @default(0)
+  maxDrawdown     Float    @default(0)
+
+  // Config
+  config          Json     // Current agent configuration
+
+  @@index([isRunning])
+}
+
+// Alert/notification log
+model Alert {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  timestamp   DateTime @default(now())
+
+  type        String   // ERROR, WARNING, INFO, TRADE, PROFIT, LOSS
+  severity    String   // LOW, MEDIUM, HIGH, CRITICAL
+  message     String
+  metadata    Json?
+
+  acknowledged Boolean @default(false)
+
+  @@index([timestamp])
+  @@index([type])
+  @@index([severity])
+}
